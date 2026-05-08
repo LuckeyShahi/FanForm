@@ -95,6 +95,24 @@ nav{position:sticky;top:0;z-index:200;height:58px;background:rgba(8,9,11,.92);ba
 /* ERROR */
 .error-msg{display:none;background:rgba(201,82,82,.08);border:1px solid rgba(201,82,82,.25);border-radius:8px;padding:11px 14px;font-size:12.5px;color:var(--red);margin-top:10px;text-align:center;}
 
+/* OTP */
+.otp-wrap{display:none;flex-direction:column;gap:10px;margin-top:4px;}
+.otp-wrap.visible{display:flex;}
+.otp-row{display:flex;gap:8px;}
+.otp-row input{flex:1;background:var(--bg3);border:1px solid var(--line2);border-radius:9px;padding:11px 14px;font-family:'DM Mono',monospace;font-size:16px;letter-spacing:4px;color:var(--white);outline:none;transition:border-color .2s,box-shadow .2s;width:100%;text-align:center;}
+.otp-row input:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(200,168,75,.08);}
+.btn-send-otp{padding:11px 18px;background:var(--bg3);border:1px solid var(--gold);border-radius:9px;font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--gold);cursor:pointer;white-space:nowrap;transition:background .2s;flex-shrink:0;}
+.btn-send-otp:hover{background:rgba(200,168,75,.1);}
+.btn-send-otp:disabled{opacity:.45;cursor:not-allowed;}
+.otp-status{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.5px;color:var(--sub);text-align:center;}
+.otp-status.success{color:var(--green);}
+.otp-status.error{color:var(--red);}
+.btn-verify-otp{width:100%;padding:11px;background:rgba(63,168,118,.1);border:1px solid rgba(63,168,118,.3);border-radius:9px;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--green);cursor:pointer;transition:background .2s;}
+.btn-verify-otp:hover{background:rgba(63,168,118,.18);}
+.btn-verify-otp:disabled{opacity:.45;cursor:not-allowed;}
+.verified-badge{display:none;align-items:center;gap:6px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--green);background:rgba(63,168,118,.08);border:1px solid rgba(63,168,118,.2);border-radius:8px;padding:8px 12px;}
+.verified-badge.show{display:flex;}
+
 /* FOOTER NOTE */
 .footer-note{text-align:center;font-family:'DM Mono',monospace;font-size:10px;color:var(--dim);letter-spacing:.5px;margin-top:28px;}
 </style>
@@ -159,7 +177,17 @@ nav{position:sticky;top:0;z-index:200;height:58px;background:rgba(8,9,11,.92);ba
     </div>
     <div class="field">
       <div class="field-label">Phone Number <span>*</span></div>
-      <input type="tel" id="phone" placeholder="10-digit mobile number" maxlength="10" autocomplete="off"/>
+      <div class="otp-row">
+        <input type="tel" id="phone" placeholder="10-digit mobile number" maxlength="10" autocomplete="off"/>
+        <button class="btn-send-otp" id="sendOtpBtn" onclick="sendOTP()">Send OTP</button>
+      </div>
+      <!-- OTP input appears after send -->
+      <div class="otp-wrap" id="otpWrap">
+        <input type="number" id="otpInput" placeholder="Enter 6-digit OTP" maxlength="6"/>
+        <button class="btn-verify-otp" id="verifyOtpBtn" onclick="verifyOTP()">✓ Verify OTP</button>
+        <div class="otp-status" id="otpStatus"></div>
+      </div>
+      <div class="verified-badge" id="verifiedBadge">✅ &nbsp;Phone number verified</div>
     </div>
     <div class="field">
       <div class="field-label">Email ID <span>*</span></div>
@@ -228,27 +256,148 @@ nav{position:sticky;top:0;z-index:200;height:58px;background:rgba(8,9,11,.92);ba
   <div class="footer-note">FanWar © 2025 · Powered by FanForm · All entries are verified</div>
 </div>
 
-<script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAk9VetyEbP4WlPM60bU0ZL2z8NJSE69PU",
+  authDomain: "fanform-4d6e5.firebaseapp.com",
+  projectId: "fanform-4d6e5",
+  storageBucket: "fanform-4d6e5.firebasestorage.app",
+  messagingSenderId: "1081092594042",
+  appId: "1:1081092594042:web:c67f557411e5634021dec3",
+  measurementId: "G-YVBSLPPDPN"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+auth.languageCode = 'en';
+
 const SHEET_URL = 'https://script.google.com/macros/s/AKfycbxS24emrEuSGe3xvD6xjrZc_fQpontuAN1zBi42vxLLezDwZEHhtx7mCuSBxTDjd12hOg/exec';
 
-function validate() {
-  const naam     = document.getElementById('naam').value.trim();
-  const phone    = document.getElementById('phone').value.trim();
-  const email    = document.getElementById('email').value.trim();
-  const upi      = document.getElementById('upi').value.trim();
-  const igl      = document.getElementById('igl').value.trim();
-  const entry    = document.getElementById('entry').value.trim();
-  const supporter= document.getElementById('supporter').value.trim();
-  const freeman  = document.getElementById('freeman').value.trim();
+let confirmationResult = null;
+let phoneVerified = false;
+let recaptchaReady = false;
 
-  if (!naam || !phone || !email || !upi || !igl || !entry || !supporter || !freeman) return 'All fields are required.';
-  if (!/^\d{10}$/.test(phone)) return 'Phone number must be exactly 10 digits.';
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Please enter a valid email address.';
-  if (!upi.includes('@')) return 'Please enter a valid UPI ID (e.g. name@upi).';
+// ── Setup invisible reCAPTCHA ──
+function setupRecaptcha() {
+  if (recaptchaReady) return;
+  window.recaptchaVerifier = new RecaptchaVerifier(auth, 'sendOtpBtn', {
+    size: 'invisible',
+    callback: () => {}
+  });
+  recaptchaReady = true;
+}
+
+// ── SEND OTP ──
+window.sendOTP = async function() {
+  const phone  = document.getElementById('phone').value.trim();
+  const status = document.getElementById('otpStatus');
+  const btn    = document.getElementById('sendOtpBtn');
+
+  if (!/^\d{10}$/.test(phone)) {
+    showStatus('Please enter a valid 10-digit number.', 'error');
+    return;
+  }
+
+  setupRecaptcha();
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  status.textContent = '';
+  status.className = 'otp-status';
+
+  try {
+    const phoneNumber = '+91' + phone;
+    confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, window.recaptchaVerifier);
+    document.getElementById('otpWrap').classList.add('visible');
+    document.getElementById('phone').readOnly = true;
+    showStatus('OTP sent to +91 ' + phone, 'success');
+    btn.textContent = 'Resend OTP';
+    btn.disabled = false;
+    startResendTimer(btn);
+  } catch (err) {
+    showStatus('Failed to send OTP. Try again.', 'error');
+    btn.textContent = 'Send OTP';
+    btn.disabled = false;
+    recaptchaReady = false;
+  }
+};
+
+// ── VERIFY OTP ──
+window.verifyOTP = async function() {
+  const otp    = document.getElementById('otpInput').value.trim();
+  const vBtn   = document.getElementById('verifyOtpBtn');
+
+  if (!otp || otp.length < 6) {
+    showStatus('Enter the 6-digit OTP.', 'error');
+    return;
+  }
+
+  vBtn.disabled = true;
+  vBtn.textContent = 'Verifying...';
+
+  try {
+    await confirmationResult.confirm(otp);
+    phoneVerified = true;
+    document.getElementById('otpWrap').classList.remove('visible');
+    document.getElementById('verifiedBadge').classList.add('show');
+    document.getElementById('sendOtpBtn').style.display = 'none';
+    showStatus('', '');
+  } catch (err) {
+    showStatus('Invalid OTP. Please try again.', 'error');
+    vBtn.disabled = false;
+    vBtn.textContent = '✓ Verify OTP';
+  }
+};
+
+// ── RESEND TIMER (30s cooldown) ──
+function startResendTimer(btn) {
+  let secs = 30;
+  btn.disabled = true;
+  const t = setInterval(() => {
+    btn.textContent = `Resend in ${secs}s`;
+    secs--;
+    if (secs < 0) {
+      clearInterval(t);
+      btn.textContent = 'Resend OTP';
+      btn.disabled = false;
+    }
+  }, 1000);
+}
+
+function showStatus(msg, type) {
+  const el = document.getElementById('otpStatus');
+  el.textContent = msg;
+  el.className = 'otp-status' + (type ? ' ' + type : '');
+}
+
+// ── VALIDATE FORM ──
+function validate() {
+  const naam      = document.getElementById('naam').value.trim();
+  const phone     = document.getElementById('phone').value.trim();
+  const email     = document.getElementById('email').value.trim();
+  const upi       = document.getElementById('upi').value.trim();
+  const igl       = document.getElementById('igl').value.trim();
+  const entry     = document.getElementById('entry').value.trim();
+  const supporter = document.getElementById('supporter').value.trim();
+  const freeman   = document.getElementById('freeman').value.trim();
+
+  if (!naam || !phone || !email || !upi || !igl || !entry || !supporter || !freeman)
+    return 'All fields are required.';
+  if (!/^\d{10}$/.test(phone))
+    return 'Phone number must be exactly 10 digits.';
+  if (!phoneVerified)
+    return 'Please verify your phone number with OTP first.';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    return 'Please enter a valid email address.';
+  if (!upi.includes('@'))
+    return 'Please enter a valid UPI ID (e.g. name@upi).';
   return null;
 }
 
-async function submitForm() {
+// ── SUBMIT FORM ──
+window.submitForm = async function() {
   const errEl = document.getElementById('errorMsg');
   const btn   = document.getElementById('submitBtn');
   errEl.style.display = 'none';
@@ -282,8 +431,9 @@ async function submitForm() {
       body: JSON.stringify(payload)
     });
 
-    // no-cors mein response nahi milta, but data chala jata hai
-    document.querySelector('.shell').querySelectorAll('.form-card, .team-card, .submit-wrap, .sec-label').forEach(el => el.style.display = 'none');
+    document.querySelector('.shell')
+      .querySelectorAll('.form-card, .team-card, .submit-wrap, .sec-label, .rules-box')
+      .forEach(el => el.style.display = 'none');
     document.getElementById('successBox').style.display = 'block';
 
   } catch (e) {
@@ -292,11 +442,16 @@ async function submitForm() {
     errEl.textContent = '❌ Network error — please try again.';
     errEl.style.display = 'block';
   }
-}
+};
 
-// Phone: sirf numbers allow karo
+// ── Phone: only numbers ──
 document.getElementById('phone').addEventListener('input', function() {
   this.value = this.value.replace(/\D/g, '');
+});
+
+// ── OTP: max 6 digits ──
+document.getElementById('otpInput').addEventListener('input', function() {
+  if (this.value.length > 6) this.value = this.value.slice(0, 6);
 });
 </script>
 </body>
