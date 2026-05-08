@@ -181,16 +181,7 @@ nav{position:sticky;top:0;z-index:200;height:58px;background:rgba(8,9,11,.92);ba
     </div>
     <div class="field">
       <div class="field-label">Email ID <span>*</span></div>
-      <div class="otp-row">
-        <input type="email" id="email" placeholder="yourname@email.com" autocomplete="off"/>
-        <button class="btn-send-otp" id="sendOtpBtn" onclick="sendOTP()">Send OTP</button>
-      </div>
-      <div class="otp-wrap" id="otpWrap">
-        <input type="number" id="otpInput" placeholder="Enter 6-digit OTP" maxlength="6"/>
-        <button class="btn-verify-otp" id="verifyOtpBtn" onclick="verifyOTP()">✓ Verify OTP</button>
-        <div class="otp-status" id="otpStatus"></div>
-      </div>
-      <div class="verified-badge" id="verifiedBadge">✅ &nbsp;Email verified</div>
+      <input type="email" id="email" placeholder="yourname@email.com" autocomplete="off"/>
     </div>
     <div class="field">
       <div class="field-label">UPI ID <span>*</span></div>
@@ -255,107 +246,9 @@ nav{position:sticky;top:0;z-index:200;height:58px;background:rgba(8,9,11,.92);ba
   <div class="footer-note">FanWar © 2025 · Powered by FanForm · All entries are verified</div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
 <script>
-// ── EmailJS Init ──
-emailjs.init('UcG-ZwJ3uPIkmPOzt');
-
 const SHEET_URL = 'https://script.google.com/macros/s/AKfycbxS24emrEuSGe3xvD6xjrZc_fQpontuAN1zBi42vxLLezDwZEHhtx7mCuSBxTDjd12hOg/exec';
 
-let generatedOTP = null;
-let emailVerified = false;
-let otpExpiry = null;
-
-// ── GENERATE 6-digit OTP ──
-function generateOTP() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
-// ── SEND OTP ──
-window.sendOTP = async function() {
-  const email = document.getElementById('email').value.trim();
-  const btn   = document.getElementById('sendOtpBtn');
-
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    showStatus('Please enter a valid email address first.', 'error');
-    return;
-  }
-
-  generatedOTP = generateOTP();
-  otpExpiry = Date.now() + 5 * 60 * 1000; // 5 minutes
-
-  btn.disabled = true;
-  btn.textContent = 'Sending...';
-  showStatus('', '');
-
-  try {
-    await emailjs.send('service_xkjwf8r', 'template_p39d2oo', {
-      email: email,
-      passcode: generatedOTP,
-    });
-
-    document.getElementById('otpWrap').classList.add('visible');
-    document.getElementById('email').readOnly = true;
-    showStatus('OTP sent to ' + email, 'success');
-    btn.textContent = 'Resend OTP';
-    startResendTimer(btn);
-
-  } catch (err) {
-    showStatus('Failed to send OTP. Check your email and try again.', 'error');
-    btn.textContent = 'Send OTP';
-    btn.disabled = false;
-  }
-};
-
-// ── VERIFY OTP ──
-window.verifyOTP = function() {
-  const entered = document.getElementById('otpInput').value.trim();
-  const vBtn    = document.getElementById('verifyOtpBtn');
-
-  if (!entered || entered.length < 6) {
-    showStatus('Please enter the 6-digit OTP.', 'error');
-    return;
-  }
-
-  if (Date.now() > otpExpiry) {
-    showStatus('OTP has expired. Please resend.', 'error');
-    return;
-  }
-
-  if (entered === generatedOTP) {
-    emailVerified = true;
-    document.getElementById('otpWrap').classList.remove('visible');
-    document.getElementById('verifiedBadge').classList.add('show');
-    document.getElementById('sendOtpBtn').style.display = 'none';
-    showStatus('', '');
-  } else {
-    showStatus('Incorrect OTP. Please try again.', 'error');
-    vBtn.disabled = false;
-  }
-};
-
-// ── RESEND TIMER (30s cooldown) ──
-function startResendTimer(btn) {
-  let secs = 30;
-  btn.disabled = true;
-  const t = setInterval(() => {
-    btn.textContent = `Resend in ${secs}s`;
-    secs--;
-    if (secs < 0) {
-      clearInterval(t);
-      btn.textContent = 'Resend OTP';
-      btn.disabled = false;
-    }
-  }, 1000);
-}
-
-function showStatus(msg, type) {
-  const el = document.getElementById('otpStatus');
-  el.textContent = msg;
-  el.className = 'otp-status' + (type ? ' ' + type : '');
-}
-
-// ── VALIDATE ──
 function validate() {
   const naam      = document.getElementById('naam').value.trim();
   const phone     = document.getElementById('phone').value.trim();
@@ -372,15 +265,12 @@ function validate() {
     return 'Phone number must be exactly 10 digits.';
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
     return 'Please enter a valid email address.';
-  if (!emailVerified)
-    return 'Please verify your email with OTP first.';
   if (!upi.includes('@'))
     return 'Please enter a valid UPI ID (e.g. name@upi).';
   return null;
 }
 
-// ── SUBMIT ──
-window.submitForm = async function() {
+async function submitForm() {
   const errEl = document.getElementById('errorMsg');
   const btn   = document.getElementById('submitBtn');
   errEl.style.display = 'none';
@@ -425,16 +315,10 @@ window.submitForm = async function() {
     errEl.textContent = '❌ Network error — please try again.';
     errEl.style.display = 'block';
   }
-};
+}
 
-// ── Phone: only numbers ──
 document.getElementById('phone').addEventListener('input', function() {
   this.value = this.value.replace(/\D/g, '');
-});
-
-// ── OTP: max 6 digits ──
-document.getElementById('otpInput').addEventListener('input', function() {
-  if (this.value.length > 6) this.value = this.value.slice(0, 6);
 });
 </script>
 </body>
